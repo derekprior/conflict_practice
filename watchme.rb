@@ -5,11 +5,13 @@
 #
 ###
 require 'json'
+require 'octokit'
 
 class GitHub
   def initialize(username, password)
     @username = username
     @password = password
+    @client = Octokit::Client.new(login: username, password: password)
   end
 
   def repos
@@ -20,9 +22,15 @@ class GitHub
     get_all(subscriptions_url).map { |repo| repo['full_name'] }
   end
 
+  def subscribe(repos)
+    Array(repos).each do |repo|
+      client.update_subscription(repo, subscribed: true)
+    end
+  end
+
   private
 
-  attr_reader :username, :password
+  attr_reader :username, :password, :client
 
   def repos_url
     user_json['repos_url']
@@ -33,7 +41,7 @@ class GitHub
   end
 
   def user_json
-    @user_json ||= get(user_url.sub('{user}', @username))
+    @user_json ||= get(user_url.sub('{user}', username))
   end
 
   def user_url
@@ -73,14 +81,19 @@ end
 
 github = GitHub.new(username, password)
 
-watchme = github.repos - github.subscriptions
+unsubscribed = github.repos - github.subscriptions
 
-if watchme.any?
+if unsubscribed.any?
   puts "You own but are not watching the following:"
+  unsubscribed.each { |repo| puts "  #{repo}" }
+  print "Watch all these repos? (y/N): "
 
-  watchme.each do |repo|
-    puts "https://github.com/#{repo}"
+  unless $stdin.gets.chomp.downcase == "y"
+    exit
   end
+
+  github.subscribe(unsubscribed)
+  puts "You're now watching all your own repos"
 else
-  puts "You're watching all your own repos. Nice."
+  puts "You're already watching all your own repos. Nice."
 end
